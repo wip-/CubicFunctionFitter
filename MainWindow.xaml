@@ -1,0 +1,90 @@
+﻿<Window x:Class="CubicFunctionFitter.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:system="clr-namespace:System;assembly=mscorlib"
+        Title="MainWindow" Height="600" Width="550">
+    <Window.Resources>
+        <system:String x:Key="LabelCurveDegree2">Y = aX² + bX + c</system:String>
+        <system:String x:Key="LabelCurveDegree3">Y = aX³ + bX² + cX + d</system:String>
+        <system:String x:Key="LabelInfoInitialValue">Paste X and Y values (from CSV)</system:String>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="140*"/>
+            <RowDefinition Height="360*"/>
+            <RowDefinition Height="50*"/>
+        </Grid.RowDefinitions>
+
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="50*"/>
+            <ColumnDefinition Width="50*"/>
+            <ColumnDefinition Width="360*"/>
+            <ColumnDefinition Width="60*"/>
+        </Grid.ColumnDefinitions>
+
+        <Label Grid.Row="0" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="18,0" Height="26" Width="17">X</Label>
+        <Label Grid.Row="0" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="19,0" Height="26" Width="16">Y</Label>
+        <Label Grid.Row="0" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Bottom" Height="26" >Y approx.</Label>
+        
+        <StackPanel Grid.Row="0" Grid.Column="2" >
+            <ComboBox Name="ComboBoxDegrees" SelectedIndex="0">
+                <ComboBoxItem Content="{StaticResource LabelCurveDegree3}"/>
+                <ComboBoxItem Content="{StaticResource LabelCurveDegree2}"/>
+            </ComboBox>
+            <!--<Label Grid.Row="0" Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center">Y=aX³+bX²+cX+d</Label>-->
+            <StackPanel Orientation="Horizontal"><Label Width="30" Content="a="/><TextBox Name="TextBoxResultA" Width="200"/></StackPanel>
+            <StackPanel Orientation="Horizontal"><Label Width="30" Content="b="/><TextBox Name="TextBoxResultB" Width="200"/></StackPanel>
+            <StackPanel Orientation="Horizontal"><Label Width="30" Content="c="/><TextBox Name="TextBoxResultC" Width="200"/></StackPanel>
+            <StackPanel Orientation="Horizontal"><Label Width="30" Content="d="/><TextBox Name="TextBoxResultD" Width="200"/></StackPanel>
+        </StackPanel>
+
+        <ScrollViewer Name="ScrollViewerXValues"
+                      Grid.Row="1" Grid.Column="0" 
+                      ScrollChanged="ScrollViewer_ScrollChanged"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Visible">           
+            <TextBox Name="TextBoxXValues" TextChanged="TextBoxXValues_TextChanged"/>
+        </ScrollViewer>
+
+        <ScrollViewer Name="ScrollViewerYValues"
+                      Grid.Row="1" Grid.Column="1" 
+                      ScrollChanged="ScrollViewer_ScrollChanged"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Visible">
+            <TextBox Name="TextBoxYValues" TextChanged="TextBoxYValues_TextChanged" />
+        </ScrollViewer>
+
+        <ScrollViewer Name="ScrollViewerImage"
+                      Grid.Row="1" Grid.Column="2"
+                      ScrollViewer.HorizontalScrollBarVisibility="Visible" ScrollViewer.VerticalScrollBarVisibility="Visible">
+            <Image Name="ImageGraph"
+               Stretch="None" RenderOptions.BitmapScalingMode="NearestNeighbor" RenderTransformOrigin="0.5,0.5"
+               MouseMove="ImageGraph_MouseMove" Margin="2,2,2,2"/>
+        </ScrollViewer>
+
+        <ScrollViewer Name="ScrollViewerCurveYValues"
+                      Grid.Row="1" Grid.Column="3" 
+                      ScrollChanged="ScrollViewer_ScrollChanged"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Visible">
+            <TextBox Name="TextBoxCurveYValues"/>
+        </ScrollViewer>
+        
+        <TextBlock Name="LabelInfo" 
+               Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap"
+               HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,0,0,0"
+               Text="{StaticResource LabelInfoInitialValue}" />
+
+        <StackPanel Orientation="Horizontal"
+                    Grid.Row="2" Grid.Column="2" Grid.ColumnSpan="2">
+            <StackPanel>
+                <Slider Name="SliderZoomOut" Minimum="0.01" Maximum="001" Value="1" ValueChanged="SliderZoomOut_ValueChanged" Width="300"/>
+                <Slider Name="SliderZoomIn"  Minimum="1.00" Maximum="100" Value="1" ValueChanged="SliderZoomIn_ValueChanged"/>
+            </StackPanel>
+            <StackPanel HorizontalAlignment="Right" Margin="10,0,0,0">
+                <Label Name="LabelZoom" Width="50" Content="1"/>
+                <Button Name="ButtonResetZoom" Click="ButtonResetZoom_Click">Reset zoom</Button>
+            </StackPanel>
+        </StackPanel>
+                    
+
+    </Grid>
+</Window>
