@@ -11,6 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MathNet.Numerics.LinearAlgebra.Double;
+using MathNet.Numerics;
 
 namespace CubicFunctionFitter
 {
@@ -36,7 +37,9 @@ namespace CubicFunctionFitter
             {
                 ScrollViewerXValues, 
                 ScrollViewerYValues, 
-                ScrollViewerCurveYValues, 
+                ScrollViewerSampleValues,
+                ScrollViewerCurveYValues,
+                ScrollViewerYErrors,
             };
 
             foreach (ScrollViewer scrollViewer in scrollViewers)
@@ -51,29 +54,34 @@ namespace CubicFunctionFitter
 
         private void TextBoxXValues_TextChanged(object sender, TextChangedEventArgs e)
         {
-            Update();
+            UpdateCoefficients();
         }
 
         private void TextBoxYValues_TextChanged(object sender, TextChangedEventArgs e)
         {
-            Update();
+            UpdateCoefficients();
         }
 
-        private void Update()
+        private void TextBoxSampleValues_TextChanged(object sender, TextChangedEventArgs e)
         {
-            String res = UpdateSub();
-            if(res!=null)
-                LabelInfo.Text = res;
+            UpdateCoefficients();
         }
 
-        private String UpdateSub()
+        private void ComboBoxDegrees_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (!String.IsNullOrEmpty(TextBoxXValues.Text) && !String.IsNullOrEmpty(TextBoxXValues.Text))
+            UpdateCoefficients();
+        }
+
+        // return non-null string in case of error
+        private String GetXYinputValues(out double[] xValues, out double[] yValues)
+        {
+            if (TextBoxXValues != null && TextBoxYValues != null && 
+                !String.IsNullOrEmpty(TextBoxXValues.Text) && !String.IsNullOrEmpty(TextBoxXValues.Text))
             {
-                string[] xValuesString = TextBoxXValues.Text.Split(new string[] {"\n", "\r\n"}, StringSplitOptions.RemoveEmptyEntries);
-                string[] yValuesString = TextBoxYValues.Text.Split(new string[] {"\n", "\r\n"}, StringSplitOptions.RemoveEmptyEntries);
-                double[] xValues = Array.ConvertAll(xValuesString, Double.Parse);
-                double[] yValues = Array.ConvertAll(yValuesString, Double.Parse);
+                string[] xValuesString = TextBoxXValues.Text.Split(new string[] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                string[] yValuesString = TextBoxYValues.Text.Split(new string[] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                xValues = Array.ConvertAll(xValuesString, Double.Parse);
+                yValues = Array.ConvertAll(yValuesString, Double.Parse);
 
                 if (xValues.Count() != yValues.Count())
                     return "X and Y values size are not the same";
@@ -81,76 +89,207 @@ namespace CubicFunctionFitter
                 if (xValues.Count() == 0)
                     return "Still an empty column";
 
-                if (xValues.Count() < 4)
+                if (xValues.Count() < GetMinSampleSize())
                     return "Not enough values";
 
-                // http://christoph.ruegg.name/blog/linear-regression-mathnet-numerics.html
-
-                // build matrices
-                var X = DenseMatrix.OfColumnVectors(
-                    new[]
-                    {
-                        DenseVector.Create(xValues.Length, t=>t*t*t),
-                        DenseVector.Create(xValues.Length, t=>t*t),
-                        DenseVector.Create(xValues.Length, t=>t),
-                        DenseVector.Create(xValues.Length, t=>1)
-                    });
-
-                var y = new DenseVector(yValues);
-
-                // solve
-                var p = X.QR().Solve(y);
-
-
-                //TextBoxResultA.Text = String.Format("{0:#########.###############}", p.ToArray()[0]);
-                //TextBoxResultB.Text = String.Format("{0:#########.###############}", p.ToArray()[1]);
-                //TextBoxResultC.Text = String.Format("{0:#########.###############}", p.ToArray()[2]);
-                //TextBoxResultD.Text = String.Format("{0:#########.###############}", p.ToArray()[3]);
-
-                TextBoxResultA.Text = String.Format("{0:F15}", p.ToArray()[0]);
-                TextBoxResultB.Text = String.Format("{0:F15}", p.ToArray()[1]);
-                TextBoxResultC.Text = String.Format("{0:F15}", p.ToArray()[2]);
-                TextBoxResultD.Text = String.Format("{0:F15}", p.ToArray()[3]);
-
-                //double[] yCurveValues = new double[xValues.Length];
-                String yCurveValues = String.Empty;
-                for (int i = 0; i < xValues.Length; ++i )
-                {
-                    double yCurveValue = GetCurveValue(xValues[i], p.ToArray());
-                    //yCurveValues[i] = yCurveValue;
-                    yCurveValues += yCurveValue + "\n";
-                }
-                TextBoxCurveYValues.Text = yCurveValues;
-
-
-                //TextBoxResultA.Text = p.ToArray()[0].ToString();
-                //TextBoxResultB.Text = p.ToArray()[1].ToString();
-                //TextBoxResultC.Text = p.ToArray()[2].ToString();
-                //TextBoxResultD.Text = p.ToArray()[3].ToString();
-
-
-                Bitmap graph = GetGraph(xValues, yValues, p.ToArray());
-
-                ImageGraph.Source =
-                    Imaging.CreateBitmapSourceFromHBitmap(
-                        graph.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-
-                ButtonResetZoom_Click(null, null);
-
-                return "Success";
+                // success
+                return null;
             }
 
+            xValues = new double[0];
+            yValues = new double[0];
             return Resources["LabelInfoInitialValue"].ToString();
         }
 
 
+        private int GetPolynomialOrder()
+        {
+            if (ComboBoxDegrees.SelectedItem == ComboBoxItem3Degrees) return 3;
+            if (ComboBoxDegrees.SelectedItem == ComboBoxItem2Degrees) return 2;
+            if (ComboBoxDegrees.SelectedItem == ComboBoxItem1Degrees) return 1;
+
+            Debug.Assert(false);
+            return Int32.MaxValue;
+        }
+
+        private int GetMinSampleSize()
+        {
+            return GetPolynomialOrder() + 1;
+        }
+
+        // return non-null string in case of error
+        private String SetSampleWeightsString(String value)
+        {
+            double[] xValues, yValues;
+            String msg = GetXYinputValues(out xValues, out yValues);
+            if (msg != null)
+                return msg;
+
+            String sampleValues = String.Empty;
+            for (int i = 0; i < xValues.Length; ++i)
+            {
+                sampleValues += value + "\n";
+            }
+            TextBoxSampleValues.Text = sampleValues;
+
+            return null;
+        }
+
+        private void ButtonSampleAll_Click(object sender, RoutedEventArgs e)
+        {
+            String msg = SetSampleWeightsString("1");
+            if(msg!=null)
+                LabelInfo.Text = msg;
+        }
+
+
+        private void ButtonSampleNone_Click(object sender, RoutedEventArgs e)
+        {
+            String msg = SetSampleWeightsString("0");
+            if (msg != null)
+                LabelInfo.Text = msg;
+        }
+
+        private void ButtonSampleMin_Click(object sender, RoutedEventArgs e)
+        {
+            double[] xValues, yValues;
+            String msg = GetXYinputValues(out xValues, out yValues);
+            if (msg != null)
+                LabelInfo.Text = msg;
+
+            List<int> sampleIndexes = new List<int>();
+            sampleIndexes.Add(0);                       // first
+            sampleIndexes.Add(xValues.Length-1);        // last
+            int splitsCount = GetMinSampleSize() - 1;
+            for (int i = 1; i < splitsCount; ++i)
+            {
+                sampleIndexes.Add((int)(i * (double)xValues.Length / splitsCount));
+            }
+
+            String sampleValues = String.Empty;
+            for (int i = 0; i < xValues.Length; ++i)
+            {
+                if(sampleIndexes.Contains(i))
+                    sampleValues += "1\n";
+                else
+                    sampleValues += "0\n";
+            }
+            TextBoxSampleValues.Text = sampleValues;
+        }
+
+        private void UpdateCoefficients()
+        {
+            String res = UpdateCoefficientsSub();
+            if(res!=null && LabelInfo!=null)
+                LabelInfo.Text = res;
+        }
+
+        private String UpdateCoefficientsSub()
+        {
+            double[] xValuesAll, yValuesAll;
+            String msg = GetXYinputValues(out xValuesAll, out yValuesAll);
+            if (msg != null)
+                return msg;
+
+            // initialize sample weights
+            if (String.IsNullOrEmpty(TextBoxSampleValues.Text))
+            {
+                ButtonSampleAll_Click(null, null);
+            }
+
+            string[] sampleValuesString = TextBoxSampleValues.Text.Split(new string[] { "\n", "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            double[] sampleValues = Array.ConvertAll(sampleValuesString, Double.Parse);
+            if (xValuesAll.Count() != sampleValues.Count())
+                return "X and sample values size are not the same";
+
+            List<double> xValuesList = new List<double>();
+            List<double> yValuesList = new List<double>();
+
+            for (int i = 0; i < sampleValues.Length; ++i )
+            {
+                if (sampleValues[i] == 1)
+                {
+                    xValuesList.Add(xValuesAll[i]);
+                    yValuesList.Add(yValuesAll[i]);
+                }
+            }
+
+            if (xValuesList.Count < GetMinSampleSize())
+                return "Not enough samples";
+
+            double[] xValues = xValuesList.ToArray();
+            double[] yValues = yValuesList.ToArray();
+
+            // http://numerics.mathdotnet.com/api/MathNet.Numerics/Fit.htm
+            double[] p = Fit.Polynomial(xValues, yValues, GetPolynomialOrder());
+            Array.Reverse(p);
+
+
+            TextBox[] textBoxes = new TextBox[]
+            {
+                TextBoxResultA, 
+                TextBoxResultB, 
+                TextBoxResultC, 
+                TextBoxResultD
+            };
+
+            for (int i = 0; i < 4; ++i)
+                textBoxes[i].Text = String.Empty;
+
+            for (int i = 0; i <= GetPolynomialOrder(); ++i )
+            {
+                textBoxes[i].Text = String.Format("{0:F15}", p[i]);
+            }
+
+
+            return "Coefficients obtained";
+        }
+
+
+
+
+
+        private void UpdateErrorValues(double[] xValuesAll, double[] yValuesAll, double[] coefficients)
+        {
+            String yCurveValues = String.Empty;
+            String yErrors = String.Empty;
+            double totalError = 0;
+            for (int i = 0; i < xValuesAll.Length; ++i)
+            {
+                double yCurveValue = GetCurveValue(xValuesAll[i], coefficients);
+                double error = yCurveValue - yValuesAll[i];
+                totalError += error * error;
+                yCurveValues += String.Format("{0:F7}\n", yCurveValue);
+                yErrors += String.Format("{0:F7}\n", error);
+            }
+            TextBoxCurveYValues.Text = yCurveValues;
+            TextBoxYErrors.Text = yErrors;
+            LabelAverageError.Content = String.Format("{0:F7}", totalError / xValuesAll.Length);
+        }
+
+
+
+
+        private void UpdateGraph(double[] xValuesAll, double[] yValuesAll, double[] coefficients)
+        {
+            Bitmap graph = GetGraph(xValuesAll, yValuesAll, coefficients);
+
+            ImageGraph.Source =
+                Imaging.CreateBitmapSourceFromHBitmap(
+                    graph.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+
+            ButtonResetZoom_Click(null, null);
+        }
+
         private double GetCurveValue(double x, double[] coefficients)
         {
-            return
-                coefficients[0] * x * x * x +
-                coefficients[1] * x * x +
-                coefficients[2] * x * +
-                coefficients[3];
+            double result = 0;
+            int polynomialDegree = coefficients.Length - 1;
+            for (int i = 0; i <= polynomialDegree; ++i)
+            {
+                result += coefficients[i] * Math.Pow(x, polynomialDegree-i);
+            }
+            return result;
         }
 
         private Bitmap GetGraph(double[] xValues, double[] yValues, double[] coefficients)
@@ -215,38 +354,65 @@ namespace CubicFunctionFitter
 
         private void ImageGraph_MouseMove(object sender, MouseEventArgs e)
         {
-
+            // TODO: display values or some other cool thing
         }
 
-        private void ScrollViewerXValues_OnPaste(object sender, DataObjectPastingEventArgs e)
-        {
-            e.CancelCommand();
 
-            List<string[]> data = ClipboardHelper.ParseClipboardData();
+        private String GetChartFirstColumn(List<string[]> data)
+        {
             String str = String.Empty;
             foreach (string[] stringsLine in data)
             {
                 str += stringsLine[0] + "\n";
             }
-            TextBoxXValues.Text = str;
+            return str;
+        }
+
+        private void PasteChartTwoFirstColumns(List<string[]> data)
+        {
+            String str0= String.Empty;
+            String str1 = String.Empty;
+            foreach (string[] stringsLine in data)
+            {
+                str0 += stringsLine[0] + "\n";
+                str1 += stringsLine[1] + "\n";
+            }
+            TextBoxXValues.Text = str0;
+            TextBoxYValues.Text = str1;
+        }
+
+
+        private void ScrollViewerXValues_OnPaste(object sender, DataObjectPastingEventArgs e)
+        {
+            e.CancelCommand();
+            List<string[]> data = ClipboardHelper.ParseClipboardData();
+            if (data[0].Length > 1)
+            {
+                PasteChartTwoFirstColumns(data);
+            }
+            else
+            {
+                TextBoxXValues.Text = GetChartFirstColumn(data);
+            }
         }
 
         private void ScrollViewerYValues_OnPaste(object sender, DataObjectPastingEventArgs e)
         {
             e.CancelCommand();
-
             List<string[]> data = ClipboardHelper.ParseClipboardData();
-            String str = String.Empty;
-            foreach (string[] stringsLine in data)
+            if (data[0].Length > 1)
             {
-                str += stringsLine[0] + "\n";
+                PasteChartTwoFirstColumns(data);
             }
-            TextBoxYValues.Text = str;
+            else
+            {
+                TextBoxYValues.Text = GetChartFirstColumn(data);
+            }
         }
 
         private void SliderZoomOut_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (SliderZoomOut.Value != 1)
+            if (SliderZoomOut.IsInitialized && SliderZoomOut.Value != 1)
                 Zoom(SliderZoomOut.Value);
             if (SliderZoomIn != null)
                 SliderZoomIn.Value = 1;
@@ -308,5 +474,29 @@ namespace CubicFunctionFitter
             MessageBox.Show(ex.Message + Environment.NewLine + sourceMsg);
             Debugger.Break();
         }
+
+        private void TextBoxCoefficient_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            double[] xValuesAll, yValuesAll;
+            String msg = GetXYinputValues(out xValuesAll, out yValuesAll);
+            if (msg != null)
+                LabelInfo.Text = msg;
+
+            List<double> coefficients = new List<double>();
+            if (!String.IsNullOrEmpty(TextBoxResultA.Text)) coefficients.Add(Convert.ToDouble(TextBoxResultA.Text));
+            if (!String.IsNullOrEmpty(TextBoxResultB.Text)) coefficients.Add(Convert.ToDouble(TextBoxResultB.Text));
+            if (!String.IsNullOrEmpty(TextBoxResultC.Text)) coefficients.Add(Convert.ToDouble(TextBoxResultC.Text));
+            if (!String.IsNullOrEmpty(TextBoxResultD.Text)) coefficients.Add(Convert.ToDouble(TextBoxResultD.Text));
+
+            if (coefficients.Count == GetPolynomialOrder() + 1)
+            {
+                UpdateErrorValues(xValuesAll, yValuesAll, coefficients.ToArray());
+                UpdateGraph(xValuesAll, yValuesAll, coefficients.ToArray());
+            }
+        }
+
+
+
+
     }
 }
