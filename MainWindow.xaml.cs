@@ -379,6 +379,7 @@ namespace CubicFunctionFitter
             }
             TextBoxXValues.Text = str0;
             TextBoxYValues.Text = str1;
+            UpdateCoefficients();
         }
 
 
