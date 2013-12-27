@@ -264,7 +264,7 @@ namespace CubicFunctionFitter
             }
             TextBoxCurveYValues.Text = yCurveValues;
             TextBoxYErrors.Text = yErrors;
-            LabelAverageError.Content = String.Format("{0:F7}", totalError / xValuesAll.Length);
+            LabelAverageError.Content = String.Format("{0:F7}", Math.Sqrt(totalError / xValuesAll.Length));
         }
 
 
